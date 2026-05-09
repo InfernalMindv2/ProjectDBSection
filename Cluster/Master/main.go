@@ -10,16 +10,17 @@ func main() {
 	MServices.Init_DB()
 
 	// 2- Create DB
-	MServices.Create_DB("TestDB")
+	MServices.Create_DB("test")
 
 	// 3- Use DB
-	MServices.Use_DB("TestDB")
+	MServices.Use_DB("test")
 
 	// 4- Create Table
 	MServices.Create_Table("users")
 
 	// 5- Insert Record
 	MServices.Insert_Record("users", "Ali", 25)
+	MServices.Insert_Record("users" ,"Ahmedbeh" ,19);
 
 	// 6- Replicate to slaves
 	slaves := []string{

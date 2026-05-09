@@ -11,7 +11,7 @@ var DB *sql.DB
 
 func Init_DB() {
 
-	db, err := sql.Open("mysql", "root:password@tcp(127.0.0.1:3306)/")
+	db, err := sql.Open("mysql", "root:123456789@tcp(127.0.0.1:3306)/test")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -43,7 +43,7 @@ func Create_DB(db_name string) {
 
 func Use_DB(db_name string) {
 
-	dsn := fmt.Sprintf("root:password@tcp(127.0.0.1:3306)/%s", db_name)
+	dsn := fmt.Sprintf("root:123456789@tcp(127.0.0.1:3306)/%s", db_name)
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {

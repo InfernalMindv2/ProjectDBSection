@@ -12,11 +12,12 @@ var DB *sql.DB
 func Init_DB() {
 
 	// 1- Connect to MySQL (slave DB)
-	db, err := sql.Open("mysql", "root:password@tcp(127.0.0.1:3306)/TestDB")
+	db, err := sql.Open("mysql", "root:123456789@tcp(127.0.0.1:3306)/test")
 	if err != nil {
 		fmt.Println("Error connecting slave DB:", err)
 		return
 	}
+	defer db.Close();
 
 	DB = db
 
