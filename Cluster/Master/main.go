@@ -13,10 +13,6 @@ var SECRET = "cluster_secret"
 var NextID int
 
 
-func saveID() {
-	data, _ := json.MarshalIndent(NextID, "", "  ")
-	os.WriteFile(idFile, data, 0644)
-}
 
 func loadID() {
 	file, err := os.ReadFile(idFile)
@@ -77,7 +73,10 @@ func safe(handler http.HandlerFunc) http.HandlerFunc {
 // ---------------- INSERT ----------------
 
 func InsertHandler(w http.ResponseWriter, r *http.Request) {
-
+	if r.Method != http.MethodPost {
+	http.Error(w, "POST only", 405)
+	return
+}
 	var req map[string]string
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -113,19 +112,6 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// shard selection
-	target := MServices.SelectSlave(len(value), slaves)
-
-	// failover if needed
-	if !MServices.IsAlive(target) {
-		fmt.Println("Primary slave down, switching...")
-		target = MServices.Failover(slaves)
-	}
-
-	if (target == MServices.Slave{}) {
-		http.Error(w, "all slaves down", 500)
-		return
-	}
 
 
 	data := map[string]string{
@@ -134,11 +120,16 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		"hash":  MServices.GenerateHash(SECRET),
 	}
 
-		err := MServices.SendToSlave(target, "insert", data)
-		if err != nil {
-			http.Error(w, "insert failed on slave", 500)
-			return
-		}
+		target, err := MServices.SendWithFailover(
+		slaves,
+		"insert",
+		data,
+	)
+
+	if err != nil {
+		http.Error(w, "all slaves failed", 500)
+		return
+	}
 	
 	// 4. ONLY AFTER SUCCESS → update metadata
 	mu.Lock()
@@ -153,6 +144,10 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 
 func SelectHandler(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method != http.MethodGet {
+	http.Error(w, "GET only", 405)
+	return
+}
 	slaves := MServices.LoadConfig()
 
 	if len(slaves) == 0 {
@@ -202,6 +197,10 @@ func SelectHandler(w http.ResponseWriter, r *http.Request) {
 
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method != http.MethodPost {
+	http.Error(w, "POST only", 405)
+	return
+}
 	var req map[string]string
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -235,6 +234,24 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		"hash":  MServices.GenerateHash(SECRET),
 	}
 
+	if !MServices.IsAlive(target) {
+
+	newTarget := MServices.Failover(slaves)
+
+	if (newTarget == MServices.Slave{}) {
+		http.Error(w, "all slaves down", 500)
+		return
+	}
+
+	target = newTarget
+
+		// UPDATE METADATA
+		mu.Lock()
+		Metadata[req["id"]] = fmt.Sprint(target.ID)
+		saveMetadata()
+		mu.Unlock()
+	}
+
 	err := MServices.SendToSlave(target, "update", data)
 	if err != nil {
 		http.Error(w, "update failed", 500)
@@ -248,6 +265,10 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method != http.MethodPost {
+	http.Error(w, "POST only", 405)
+	return
+}
 	var req map[string]string
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -279,11 +300,29 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 		"hash": MServices.GenerateHash(SECRET),
 	}
 
-	err := MServices.SendToSlave(target, "delete", data)
-	if err != nil {
-		http.Error(w, "delete failed", 500)
+	if !MServices.IsAlive(target) {
+
+	newTarget := MServices.Failover(slaves)
+
+	if (newTarget == MServices.Slave{}) {
+		http.Error(w, "all slaves down", 500)
 		return
 	}
+
+	target = newTarget
+
+	// UPDATE METADATA
+	mu.Lock()
+	Metadata[req["id"]] = fmt.Sprint(target.ID)
+	saveMetadata()
+	mu.Unlock()
+}
+
+err := MServices.SendToSlave(target, "delete", data)
+if err != nil {
+	http.Error(w, "delete failed", 500)
+	return
+}
 
 	w.Write([]byte("DELETE OK"))
 }

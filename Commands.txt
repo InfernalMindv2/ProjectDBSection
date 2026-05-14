@@ -45,3 +45,19 @@ fetch("http://127.0.0.1:9000/select")
   .then(res => res.text())
   .then(data => console.log("SELECT:", data))
   .catch(err => console.error(err));
+
+
+
+C:\Project DB>curl -X POST http://127.0.0.1:9081/insert -H "Content-Type: application/json" -d "{\"id\":\"1\",\"value\":\"hack\"}"
+OR
+access the same port slave and do 
+fetch("http://127.0.0.1:9081/insert", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    id: "1",
+    value: "hack"
+  })
+})
+.then(r => r.text())
+.then(console.log)

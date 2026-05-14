@@ -130,3 +130,27 @@ func SendToSlave(s Slave, endpoint string, data map[string]string) error {
 
 	return nil
 }
+
+func SendWithFailover(
+	slaves []Slave,
+	endpoint string,
+	data map[string]string,
+) (Slave, error) {
+
+	for _, s := range slaves {
+
+		if !IsAlive(s) {
+			fmt.Println("❌ Slave", s.ID, "down")
+			continue
+		}
+
+		err := SendToSlave(s, endpoint, data)
+
+		if err == nil {
+			fmt.Println("✅ Request handled by slave", s.ID)
+			return s, nil
+		}
+	}
+
+	return Slave{}, fmt.Errorf("all slaves failed")
+}

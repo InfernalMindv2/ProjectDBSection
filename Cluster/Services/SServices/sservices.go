@@ -20,6 +20,7 @@ func InitDB() {
 
 	// each slave must define its own DB name
 	// example: SLAVE_ID=1 → test_slave1
+	// set SLAVE_ID=1
 	slaveID := os.Getenv("SLAVE_ID")
 
 	if slaveID == "" {
@@ -75,6 +76,10 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 
 func InsertHandler(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method != http.MethodPost {
+	http.Error(w, "POST only", 405)
+	return
+}
 	var data map[string]string
 
 
@@ -114,7 +119,10 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 
 func SelectHandler(w http.ResponseWriter, r *http.Request) {
 
-	
+	if r.Method != http.MethodGet {
+	http.Error(w, "GET only", 405)
+	return
+}
 
 	rows, err := db.Query("SELECT id, name FROM users")
 	if err != nil {
@@ -139,6 +147,10 @@ func SelectHandler(w http.ResponseWriter, r *http.Request) {
 
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method != http.MethodPost {
+	http.Error(w, "POST only", 405)
+	return
+}
 	var data map[string]string
 	
 
@@ -178,6 +190,10 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 
+	if r.Method != http.MethodPost {
+	http.Error(w, "POST only", 405)
+	return
+}
 	var data map[string]string
 
 
