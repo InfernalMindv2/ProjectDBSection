@@ -235,7 +235,11 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		"hash":  MServices.GenerateHash(SECRET),
 	}
 
-	go MServices.SendToSlave(target, "update", data)
+	err := MServices.SendToSlave(target, "update", data)
+	if err != nil {
+		http.Error(w, "update failed", 500)
+		return
+	}
 
 	w.Write([]byte("UPDATE OK"))
 }
@@ -275,7 +279,11 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 		"hash": MServices.GenerateHash(SECRET),
 	}
 
-	go MServices.SendToSlave(target, "delete", data)
+	err := MServices.SendToSlave(target, "delete", data)
+	if err != nil {
+		http.Error(w, "delete failed", 500)
+		return
+	}
 
 	w.Write([]byte("DELETE OK"))
 }
