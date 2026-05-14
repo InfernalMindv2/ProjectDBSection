@@ -5,12 +5,58 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"sync"
 )
 
 var SECRET = "cluster_secret"
+var NextID int
+
+
+func saveID() {
+	data, _ := json.MarshalIndent(NextID, "", "  ")
+	os.WriteFile(idFile, data, 0644)
+}
+
+func loadID() {
+	file, err := os.ReadFile(idFile)
+	if err == nil {
+		json.Unmarshal(file, &NextID)
+	}
+}
+
 
 // ---------------- METADATA ----------------
 var Metadata = map[string]string{}
+var metaFile = "./metadata.json"
+var idFile = "./id.json"
+var mu sync.Mutex
+
+
+
+
+func findSlaveByID(slaves []MServices.Slave, id string) MServices.Slave {
+	for _, s := range slaves {
+		if fmt.Sprint(s.ID) == id {
+			return s
+		}
+	}
+	return MServices.Slave{}
+}
+
+func saveMetadata() {
+	data, _ := json.MarshalIndent(Metadata, "", "  ")
+	os.WriteFile(metaFile, data, 0644)
+}
+
+// load metadata on startup
+func loadMetadata() {
+	file, err := os.ReadFile(metaFile)
+	if err == nil {
+		json.Unmarshal(file, &Metadata)
+		fmt.Println("📦 Metadata loaded")
+	}
+}
 
 // ---------------- SAFE WRAPPER ----------------
 
@@ -45,7 +91,22 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	idx :=req["id"]
+	if idx == "" {
+		http.Error(w, "missing id", 400)
+		return
+	}
 	slaves := MServices.LoadConfig()
+
+	// 1. CHECK DUPLICATE FIRST
+	mu.Lock()
+	if _, exists := Metadata[idx]; exists {
+		mu.Unlock()
+		http.Error(w, "id already exists", 409)
+		return
+	}
+	mu.Unlock()
+
 
 	if len(slaves) == 0 {
 		http.Error(w, "no slaves available", 500)
@@ -66,21 +127,24 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+
 	data := map[string]string{
+		"id":    idx,
 		"value": value,
 		"hash":  MServices.GenerateHash(SECRET),
 	}
 
-	// metadata update
-	Metadata[value] = fmt.Sprintf("stored in slave %d", target.ID)
-
-	go func() {
 		err := MServices.SendToSlave(target, "insert", data)
 		if err != nil {
-			fmt.Println("Retrying...")
-			MServices.SendToSlave(target, "insert", data)
+			http.Error(w, "insert failed on slave", 500)
+			return
 		}
-	}()
+	
+	// 4. ONLY AFTER SUCCESS → update metadata
+	mu.Lock()
+	Metadata[idx] = fmt.Sprint(target.ID)
+	saveMetadata()
+	mu.Unlock()
 
 	w.Write([]byte("INSERT OK"))
 }
@@ -152,7 +216,14 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target := MServices.SelectSlave(len(req["id"]), slaves)
+	slaveID, ok := Metadata[req["id"]]
+	if !ok {
+		http.Error(w, "record not found", 404)
+		return
+	}
+
+	target := findSlaveByID(slaves, slaveID)
+
 
 	if !MServices.IsAlive(target) {
 		target = MServices.Failover(slaves)
@@ -187,7 +258,13 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target := MServices.SelectSlave(len(req["id"]), slaves)
+	slaveID, ok := Metadata[req["id"]]
+	if !ok {
+		http.Error(w, "record not found", 404)
+		return
+	}
+
+	target := findSlaveByID(slaves, slaveID)
 
 	if !MServices.IsAlive(target) {
 		target = MServices.Failover(slaves)
@@ -206,6 +283,8 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 // ---------------- MAIN ----------------
 
 func main() {
+	loadMetadata()
+	loadID()
 
 	http.HandleFunc("/insert", safe(InsertHandler))
 	http.HandleFunc("/select", safe(SelectHandler))

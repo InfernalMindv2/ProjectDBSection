@@ -1,0 +1,47 @@
+fetch("http://127.0.0.1:9000/insert", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    id: "1",
+    value: "Ali"
+  })
+})
+.then(res => res.text())
+.then(data => console.log("INSERT:", data))
+.catch(err => console.error(err));
+
+fetch("http://127.0.0.1:9000/update", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    id: "1",
+    value: "Ali Updated"
+  })
+})
+.then(res => res.text())
+.then(data => console.log("UPDATE:", data))
+.catch(err => console.error(err));
+
+
+fetch("http://127.0.0.1:9000/delete", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    id: "1"
+  })
+})
+.then(res => res.text())
+.then(data => console.log("DELETE:", data))
+.catch(err => console.error(err));
+
+
+fetch("http://127.0.0.1:9000/select")
+  .then(res => res.text())
+  .then(data => console.log("SELECT:", data))
+  .catch(err => console.error(err));

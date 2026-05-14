@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -13,17 +14,27 @@ import (
 var db *sql.DB
 var SECRET = "cluster_secret"
 
-// ---------------- INIT ----------------
+// ---------------- INIT DB (FIXED FOR DISTRIBUTED SYSTEM) ----------------
 
 func InitDB() {
 
-	var err error
+	// each slave must define its own DB name
+	// example: SLAVE_ID=1 → test_slave1
+	slaveID := os.Getenv("SLAVE_ID")
 
-	db, err = sql.Open(
-		"mysql",
-		"root:123456789@tcp(127.0.0.1:3306)/test",
+	if slaveID == "" {
+		slaveID = "1" // fallback
+	}
+
+	dbName := fmt.Sprintf("test_slave%s", slaveID)
+
+	dsn := fmt.Sprintf(
+		"root:123456789@tcp(127.0.0.1:3306)/%s",
+		dbName,
 	)
 
+	var err error
+	db, err = sql.Open("mysql", dsn)
 	if err != nil {
 		panic(err)
 	}
@@ -32,8 +43,19 @@ func InitDB() {
 	if err != nil {
 		panic(err)
 	}
+	// 🔥 AUTO CREATE TABLE
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			id INT  PRIMARY KEY,
+			name VARCHAR(255) NOT NULL
+		)
+	`)
 
-	fmt.Println("✅ Slave DB ready")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("✅ Slave connected to DB:", dbName)
 }
 
 // ---------------- AUTH ----------------
@@ -55,10 +77,17 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 
 	var data map[string]string
 
+
+
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "invalid json", 400)
 		return
 	}
+
+		if data["id"] == "" {
+	http.Error(w, "missing id", 400)
+	return
+}
 
 	if !VerifyHash(data["hash"]) {
 		http.Error(w, "unauthorized", 403)
@@ -66,9 +95,10 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := db.Exec(
-		"INSERT INTO users(name) VALUES(?)",
-		data["value"],
-	)
+	"INSERT INTO users(id, name) VALUES(?, ?)",
+	data["id"],
+	data["value"],
+)
 
 	if err != nil {
 		http.Error(w, "insert failed", 500)
@@ -83,6 +113,8 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 // ---------------- SELECT ----------------
 
 func SelectHandler(w http.ResponseWriter, r *http.Request) {
+
+	
 
 	rows, err := db.Query("SELECT id, name FROM users")
 	if err != nil {
@@ -108,11 +140,17 @@ func SelectHandler(w http.ResponseWriter, r *http.Request) {
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 	var data map[string]string
+	
 
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "invalid json", 400)
 		return
 	}
+
+		if data["id"] == "" {
+	http.Error(w, "missing id", 400)
+	return
+}
 
 	// 🔥 SECURITY FIX
 	if !VerifyHash(data["hash"]) {
@@ -142,10 +180,17 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	var data map[string]string
 
+
+
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
 		http.Error(w, "invalid json", 400)
 		return
 	}
+
+		if data["id"] == "" {
+	http.Error(w, "missing id", 400)
+	return
+}
 
 	// 🔥 SECURITY FIX
 	if !VerifyHash(data["hash"]) {
