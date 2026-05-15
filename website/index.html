@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Cluster Dashboard</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    header {
+      padding: 20px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      padding: 20px;
+    }
+
+    .card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+
+    .card h3 {
+      margin-top: 0;
+      color: #60a5fa;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+      background: #0f172a;
+      color: white;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      background: #3b82f6;
+      color: white;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    .danger {
+      background: #ef4444;
+    }
+
+    .danger:hover {
+      background: #dc2626;
+    }
+
+    .output {
+      grid-column: span 3;
+      background: #0b1220;
+      padding: 15px;
+      border-radius: 10px;
+      min-height: 80px;
+      white-space: pre-wrap;
+      border: 1px solid #1f2937;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<header>⚡ Cluster Master Dashboard</header>
+
+<div class="container">
+
+  <!-- INSERT -->
+  <div class="card">
+    <h3>Insert</h3>
+    <input id="insertId" placeholder="ID">
+    <input id="insertValue" placeholder="Value">
+    <button onclick="insert()">Insert</button>
+  </div>
+
+  <!-- UPDATE -->
+  <div class="card">
+    <h3>Update</h3>
+    <input id="updateId" placeholder="ID">
+    <input id="updateValue" placeholder="New Value">
+    <button onclick="update()">Update</button>
+  </div>
+
+  <!-- DELETE -->
+  <div class="card">
+    <h3>Delete</h3>
+    <input id="deleteId" placeholder="ID">
+    <button class="danger" onclick="del()">Delete</button>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="output" id="output">Status: Ready</div>
+
+</div>
+
+<script>
+
+const MASTER_URL = "/"; // same server (no CORS issues)
+
+function show(data) {
+  document.getElementById("output").innerText = "Status: " + data;
+}
+
+// INSERT
+function insert() {
+  fetch(MASTER_URL + "insert", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      id: document.getElementById("insertId").value,
+      value: document.getElementById("insertValue").value
+    })
+  })
+  .then(r => r.text())
+  .then(show)
+  .catch(err => show(err));
+}
+
+// UPDATE
+function update() {
+  fetch(MASTER_URL + "update", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      id: document.getElementById("updateId").value,
+      value: document.getElementById("updateValue").value
+    })
+  })
+  .then(r => r.text())
+  .then(show)
+  .catch(err => show(err));
+}
+
+// DELETE
+function del() {
+  fetch(MASTER_URL + "delete", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      id: document.getElementById("deleteId").value
+    })
+  })
+  .then(r => r.text())
+  .then(show)
+  .catch(err => show(err));
+}
+
+</script>
+
+</body>
+</html>

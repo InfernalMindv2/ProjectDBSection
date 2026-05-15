@@ -123,6 +123,15 @@ func SelectHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "GET only", 405)
 	return
 }
+	
+	hash := r.Header.Get("X-Auth-Hash")
+
+	if !VerifyHash(hash) {
+		http.Error(w, "unauthorized", 403)
+		return
+	}
+
+
 
 	rows, err := db.Query("SELECT id, name FROM users")
 	if err != nil {
@@ -170,7 +179,7 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.Exec(
+	result, err := db.Exec(
 		"UPDATE users SET name=? WHERE id=?",
 		data["value"],
 		data["id"],
@@ -178,6 +187,12 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, "update failed", 500)
+		return
+	}
+	rows, _ := result.RowsAffected()
+
+	if rows == 0 {
+		http.Error(w, "record not found", 404)
 		return
 	}
 
@@ -214,13 +229,20 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.Exec(
+	result, err := db.Exec(
 		"DELETE FROM users WHERE id=?",
 		data["id"],
 	)
 
 	if err != nil {
 		http.Error(w, "delete failed", 500)
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+
+	if rows == 0 {
+		http.Error(w, "record not found", 404)
 		return
 	}
 

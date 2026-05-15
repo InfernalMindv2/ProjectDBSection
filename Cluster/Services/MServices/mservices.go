@@ -55,7 +55,7 @@ func IsAlive(s Slave) bool {
 	}
 	defer resp.Body.Close()
 
-	return true
+	return resp.StatusCode == http.StatusOK
 }
 
 // ---------------- HASH ----------------
@@ -122,6 +122,18 @@ func SendToSlave(s Slave, endpoint string, data map[string]string) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+
+		respBody, _ := io.ReadAll(resp.Body)
+
+		return fmt.Errorf(
+			"slave returned %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
+	}
+
 
 	// read response (VERY IMPORTANT for debugging)
 	respBody, _ := io.ReadAll(resp.Body)

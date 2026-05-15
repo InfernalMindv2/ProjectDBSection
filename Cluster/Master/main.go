@@ -4,22 +4,13 @@ import (
 	"Cluster/Services/MServices"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
 )
 
 var SECRET = "cluster_secret"
-var NextID int
-
-
-
-func loadID() {
-	file, err := os.ReadFile(idFile)
-	if err == nil {
-		json.Unmarshal(file, &NextID)
-	}
-}
 
 
 // ---------------- METADATA ----------------
@@ -120,7 +111,43 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		"hash":  MServices.GenerateHash(SECRET),
 	}
 
-		target, err := MServices.SendWithFailover(
+	// 1. choose shard normally
+	target := MServices.SelectSlave(len(value), slaves)
+
+	// 2. try selected shard first
+	if MServices.IsAlive(target) {
+
+	err := MServices.SendToSlave(target, "insert", data)
+
+	if err == nil {
+
+		fmt.Println("✅ Inserted into selected slave", target.ID)
+
+	} else {
+
+		// selected slave failed during request
+		fmt.Println("⚠️ Selected slave failed, running failover...")
+
+		target, err = MServices.SendWithFailover(
+			slaves,
+			"insert",
+			data,
+		)
+
+		if err != nil {
+			http.Error(w, "all slaves failed", 500)
+			return
+		}
+	}
+
+} else {
+
+	// selected slave already down
+	fmt.Println("⚠️ Selected slave down, running failover...")
+
+	var err error
+
+	target, err = MServices.SendWithFailover(
 		slaves,
 		"insert",
 		data,
@@ -130,6 +157,7 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "all slaves failed", 500)
 		return
 	}
+}
 	
 	// 4. ONLY AFTER SUCCESS → update metadata
 	mu.Lock()
@@ -166,20 +194,45 @@ func SelectHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			resp, err := http.Get(
-				fmt.Sprintf("http://%s:%s/select", slave.IP, slave.Port),
-			)
+			url := fmt.Sprintf(
+		"http://%s:%s/select",
+		slave.IP,
+		slave.Port,
+	)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		results <- ""
+		return
+	}
+
+	req.Header.Set(
+		"X-Auth-Hash",
+		MServices.GenerateHash(SECRET),
+	)
+
+	client := http.Client{}
+
+	resp, err := client.Do(req)
 
 			if err != nil {
 				results <- ""
 				return
 			}
 			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+			results <- ""
+			return
+		}
 
-			buf := make([]byte, 2048)
-			n, _ := resp.Body.Read(buf)
+			body, err := io.ReadAll(resp.Body)
 
-			results <- string(buf[:n])
+			if err != nil {
+				results <- ""
+				return
+			}
+
+			results <- string(body)
 
 		}(s)
 	}
@@ -214,6 +267,10 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no slaves", 500)
 		return
 	}
+	if req["value"] == ""{
+		http.Error(w, "missing value!", 400)
+		return
+	}
 
 	slaveID, ok := Metadata[req["id"]]
 	if !ok {
@@ -225,7 +282,9 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	if !MServices.IsAlive(target) {
-		target = MServices.Failover(slaves)
+		http.Error(w, "The slave that has the record is under maintainance!", 503)
+		return
+		//target = MServices.Failover(slaves)
 	}
 
 	data := map[string]string{
@@ -234,29 +293,19 @@ func UpdateHandler(w http.ResponseWriter, r *http.Request) {
 		"hash":  MServices.GenerateHash(SECRET),
 	}
 
-	if !MServices.IsAlive(target) {
-
-	newTarget := MServices.Failover(slaves)
-
-	if (newTarget == MServices.Slave{}) {
-		http.Error(w, "all slaves down", 500)
-		return
-	}
-
-	target = newTarget
-
-		// UPDATE METADATA
-		mu.Lock()
-		Metadata[req["id"]] = fmt.Sprint(target.ID)
-		saveMetadata()
-		mu.Unlock()
-	}
+	
 
 	err := MServices.SendToSlave(target, "update", data)
 	if err != nil {
 		http.Error(w, "update failed", 500)
 		return
 	}
+	// UPDATE METADATA
+	//We dont want to edit metadata.json
+		// mu.Lock()
+		// Metadata[req["id"]] = fmt.Sprint(target.ID)
+		// saveMetadata()
+		// mu.Unlock()
 
 	w.Write([]byte("UPDATE OK"))
 }
@@ -292,7 +341,9 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	target := findSlaveByID(slaves, slaveID)
 
 	if !MServices.IsAlive(target) {
-		target = MServices.Failover(slaves)
+		http.Error(w, "The slave that has the record is under maintainance!", 503)
+		return
+		//target = MServices.Failover(slaves)
 	}
 
 	data := map[string]string{
@@ -300,29 +351,17 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 		"hash": MServices.GenerateHash(SECRET),
 	}
 
-	if !MServices.IsAlive(target) {
-
-	newTarget := MServices.Failover(slaves)
-
-	if (newTarget == MServices.Slave{}) {
-		http.Error(w, "all slaves down", 500)
-		return
-	}
-
-	target = newTarget
-
-	// UPDATE METADATA
-	mu.Lock()
-	Metadata[req["id"]] = fmt.Sprint(target.ID)
-	saveMetadata()
-	mu.Unlock()
-}
 
 err := MServices.SendToSlave(target, "delete", data)
 if err != nil {
 	http.Error(w, "delete failed", 500)
 	return
 }
+	// UPDATE METADATA
+	mu.Lock()
+	delete(Metadata, req["id"])
+	saveMetadata()
+	mu.Unlock()
 
 	w.Write([]byte("DELETE OK"))
 }
@@ -331,7 +370,6 @@ if err != nil {
 
 func main() {
 	loadMetadata()
-	loadID()
 
 	http.HandleFunc("/insert", safe(InsertHandler))
 	http.HandleFunc("/select", safe(SelectHandler))
@@ -339,6 +377,7 @@ func main() {
 	http.HandleFunc("/delete", safe(DeleteHandler))
 
 	fmt.Println("MASTER API GATEWAY running on 9000")
-
+	fs := http.FileServer(http.Dir("C:\\Project DB\\website"))
+	http.Handle("/", fs)
 	http.ListenAndServe(":9000", nil)
 }
